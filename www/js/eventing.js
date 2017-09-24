@@ -2,15 +2,21 @@
  * Event Handling
 */
 
+events.on('refresh', function(){
+  // refresh the page
+  window.location.reload();
+});
+
 events.on('shakeOccurred', function(){
 	// request to reorder cards due to accelerometer shake.
     socket.emit('shakeOccurred');
 });
 
 events.on('ignoreCode', function(code){
-	// send ignore's command to the Server 
+	// send ignore's command to the Server
 	socket.emit('ignoreCode', code); // NB. socket defined below eventing.js
 	RFcodes.deleteCode(code); // remove code from the incoming_codes.
+  ga('send', 'event', 'Core', 'ignore', 'Ignore code');
 });
 
 events.on('removeIgnoreCode', function(code){
@@ -22,9 +28,10 @@ events.on('assignCode', function(code){
   var view = {title: 'Assign code', code: code};
   templating.renderTemplate('assignCode.mustache', $('#main_modal_box'), view).then(function(){
   	$('#assign-dialog').modal('show');
+    ga('send', 'event', 'UI', 'assign', 'code assignment');
   }).catch(function(err){ // err
   	notie.alert(2, err, 0);
-  });  
+  });
 });
 
 
@@ -33,10 +40,15 @@ events.on('newCardClick', function(code){
 	templating.renderTemplate('newCardForm.mustache', $('#main_modal_box'), view).then(function(){
 		$('#new-card-dialog').modal('show');
 		// all lower case, no blank space or non alpha numeric chars are admitted for this 2 fields
-		$('#shortname, #roomname').keyup(function(){
+		$('#roomname').keyup(function(){
 		    this.value = this.value.replace(/\W+/g, ' ');
     		this.value = this.value.replace(/\s+/g, '-').toLowerCase();
 		});
+    $('#headline').keyup(function(){ // shortname = headline, see enhancement #21
+        var _shortname = this.value.replace(/\W+/g, ' ');
+        _shortname = _shortname.replace(/\s+/g, '-').toLowerCase();
+        $('#shortname').val(_shortname);
+    });
 		// color picker
 		var background_color = '#FAFAFA';
 		$('.pick_colors .btn-fab').click(function(){
@@ -44,7 +56,7 @@ events.on('newCardClick', function(code){
 		console.log('Card BG color selected:', background_color);
 		$('.btn-fab .fa-check').remove();
 		$(this).html('<i class="fa fa-check" style="margin-top: 15px; color: #000"></i>');
-			
+
 		});
 		// dynamic form adapter
 		$('#type').change(function() {
@@ -67,7 +79,7 @@ events.on('newCardClick', function(code){
 		}
 		RFcodes.on('newCode', updateSelectBoxes); // set listener
 		RFcodes.on('removedCode', updateSelectBoxes); // set listener
-		
+
 		// remove listeners when modal gets closed
 		$('#new-card-dialog').on('hidden.bs.modal', function (e) {
 		  RFcodes.off('newCode', updateSelectBoxes);
@@ -118,16 +130,17 @@ events.on('newCardClick', function(code){
 			    notie.alert(1, '<i class="fa fa-paper-plane"></i> Card sent!', 3);
 			    RFcodes.deleteCodes([$('#code option:selected').val(), $('#off_code option:selected').val()]); // remove codes from the incoming codes. (in this way it can't be used anymore)
 			    $('#new-card-dialog').modal('hide');
+          ga('send', 'event', 'Core', 'card', 'new card');
 			}).fail(function(error){
 				notie.alert(2, JSON.parse(error.responseText).err, 0);
 				console.log('Ajax error', error);
 			});
-	
+
 		});
 
 	}).catch(function(err){ // err
 		notie.alert(2, err, 0);
-	}); 
+	});
 });
 
 
@@ -158,7 +171,7 @@ events.on('renderSnackbar', function(_code){
 });
 
 events.on('renderInitCards', function(initData){
-	// TODO - stampare cards usando le iterazioni di Mustache! (come fatto per la tabella codici ignorati)
+
 	console.log('initData received: ', initData);
 
 	var rooms = [];
@@ -230,6 +243,7 @@ events.on('uiTriggerAlarm', function(card){
 // delete card request
 events.on('deleteCard', function(_id){
 	socket.emit('deleteCard', _id);
+  ga('send', 'event', 'Core', 'delete', 'Card removal', _id);
 });
 
 // mute card request
@@ -240,6 +254,7 @@ events.on('muteCard', function(_id){
 // arm/disarm request
 events.on('arm_disarm', function(_id){
 	socket.emit('arm_disarm', _id);
+  ga('send', 'event', 'Core', 'arm', 'Arm/Disarm request', _id);
 });
 
 // update card dropdown menu mute status
@@ -251,7 +266,7 @@ events.on('uiMuteStatus', function(data){
 		$dropdown_entry.html('<i class="fa fa-volume-off fa-fw"></i> Mute');
 	else
 		$dropdown_entry.html('<i class="fa fa-volume-up fa-fw"></i> Un-mute');
-		
+
 });
 
 // update card dropdown menu arm/disarm status
@@ -271,6 +286,7 @@ events.on('generateNewUID', function(){
 	$.get('/api/system/new/uid', function(data){
 		if (data.status === 'ok'){
 			$('#settings-outcome kbd').html('/register '+data.uid);
+      ga('send', 'event', 'Core', 'uid-gen', data.uid);
 		}else notie.alert(2, data.error, 0);
 	});
 });
@@ -280,6 +296,7 @@ events.on('startTelegram', function(){
 	$.get('/api/system/telegram/enable', function(data){
 		if (data.status === 'ok'){
 			$('#notification-btns .btn-telegram').replaceWith('<a href="#" class="btn btn-telegram" onClick="events.emit(\'stopTelegram\');"><i class="fa fa-stop"></i> Stop <i class="fa fa-paper-plane-o"></i> Telegram Notification</a>');
+      ga('send', 'event', 'Core', 'telegram', 'enabled');
 		}else notie.alert(2, data.error, 0);
 	});
 });
@@ -289,7 +306,8 @@ events.on('stopTelegram', function(){
 	$.get('/api/system/telegram/disable', function(data){
 		if (data.status === 'ok'){
 			$('#notification-btns .btn-telegram').replaceWith('<a href="#" class="btn btn-telegram" onClick="events.emit(\'startTelegram\');"><i class="fa fa-play"></i> Start <i class="fa fa-paper-plane-o"></i> Telegram Notification</a>');
-		}else notie.alert(2, data.error, 0);		
+      ga('send', 'event', 'Core', 'telegram', 'disabled');
+		}else notie.alert(2, data.error, 0);
 	});
 });
 
@@ -298,7 +316,8 @@ events.on('startEmail', function(){
 	$.get('/api/system/email/enable', function(data){
 		if (data.status === 'ok'){
 			$('#notification-btns .btn-email').replaceWith('<a href="#" class="btn btn-email" onClick="events.emit(\'stopEmail\');"><i class="fa fa-stop"></i> Stop <i class="fa fa-envelope-o"></i> Email Notification</a>');
-		}else notie.alert(2, data.error, 0);		
+      ga('send', 'event', 'Core', 'email', 'enabled');
+		}else notie.alert(2, data.error, 0);
 	});
 });
 
@@ -307,7 +326,8 @@ events.on('stopEmail', function(){
 	$.get('/api/system/email/disable', function(data){
 		if (data.status === 'ok'){
 			$('#notification-btns .btn-email').replaceWith('<a href="#" class="btn btn-email" onClick="events.emit(\'startEmail\');"><i class="fa fa-play"></i> Start <i class="fa fa-envelope-o"></i> Email Notification</a>');
-		}else notie.alert(2, data.error, 0);		
+      ga('send', 'event', 'Core', 'email', 'enabled');
+		}else notie.alert(2, data.error, 0);
 	});
 });
 
@@ -321,6 +341,7 @@ events.on('clickHome', function(){
 	console.log('Home button clicked.');
 	socket.emit('getInitCards', socket.id);
 	$('#c-circle-nav__toggle').click(); // Close Menu
+  ga('send', 'event', 'UI', 'menu', 'Home button click');
 });
 
 // Ignored codes Menu Button
@@ -332,6 +353,7 @@ events.on('clickIgnoredCodes', function(){
 		var view = {title: 'Ignored RF codes', RFcodes: data};
 		templating.renderTemplate('ignoredCodes.mustache', $('#main_modal_box'), view).then(function(){
 			$('#ignored-codes-dialog').modal('show');
+      ga('send', 'event', 'UI', 'menu', 'Ignored codes button click');
 		}).catch(function(err){ // err
 			notie.alert(2, err, 0);
 		});
@@ -342,10 +364,10 @@ events.on('clickIgnoredCodes', function(){
 
 // About Menu Button
 events.on('clickAbout', function(){
-	// TODO
 	console.log('About button clicked.');
 	templating.renderTemplate('about.mustache', $('#main_modal_box'), {}).then(function(){
 		$('#about-dialog').modal('show');
+    ga('send', 'event', 'UI', 'menu', 'About click');
 	}).catch(function(err){ // err
 		notie.alert(2, err, 0);
 	});
@@ -357,11 +379,11 @@ events.on('clickAddCard', function(){
 	events.emit('newCardClick');
 	console.log('New Card button clicked.');
 	$('#c-circle-nav__toggle').click(); // Close Menu
+  ga('send', 'event', 'UI', 'menu', 'New card click');
 });
 
 // Settings Menu Button
 events.on('clickSettings', function(){
-	// TODO
 	console.log('Settings button clicked.');
 
 	$.get('/api/settings/get', function(data) {
@@ -374,6 +396,7 @@ events.on('clickSettings', function(){
 				settings.uid = uid;
 				templating.renderTemplate('settings.mustache', $('#main_modal_box'), settings).then(function(){
 					$('#settings-dialog').modal('show');
+          ga('send', 'event', 'UI', 'menu', 'Settings click');
 				}).catch(function(err){ // err
 					notie.alert(2, err, 0);
 				});
@@ -386,6 +409,14 @@ events.on('clickSettings', function(){
 	$('#c-circle-nav__toggle').click(); // Close Menu
 });
 
+// change Background
+events.on('changeBg', function(){
+  var p = ++BACKGROUNDS.p;
+  var picked = BACKGROUNDS.imgs[p % BACKGROUNDS.imgs.length];
+  document.body.style.backgroundImage = "url('../assets/img/backgrounds/"+picked+"')";
+  if (localStorage) localStorage.bg = picked;
+  ga('send', 'event', 'UI', 'background', 'background change');
+});
 
 /* UTILITY FUNCTIONS */
 

@@ -5,14 +5,14 @@ var server = require('http').Server(app);
 var io = require('socket.io')(server);
 var config = require('../config.json'); // config file
 var basicAuth = require('basic-auth');
-
+var cons = require('consolidate');
 
 
 module.exports = function(argv, _cb){
 
   // Setting up parameters passed by CLI
-  if (argv.username && argv.password) { config.username = argv.username.trim(); config.password = argv.password.trim();}
-  if (argv.port){ config.server_port = argv.port; }
+  if (argv.username && argv.password) { config.username = argv.username.trim(); config.password = argv.password.trim(); }
+  config.server_port = argv.port || process.env.PORT || config.server_port;
 
   // Starting Server
   server.listen(config.server_port);
@@ -23,27 +23,34 @@ module.exports = function(argv, _cb){
     function unauthorized(res) {
       res.set('WWW-Authenticate', 'Basic realm=Authorization Required');
       return res.status(401).send('Unauthorized');
-    };
+    }
 
     var user = basicAuth(req);
 
     if (!user || !user.name || !user.pass) {
       return unauthorized(res);
-    };
+    }
 
     if (user.name === config.username && user.pass === config.password) {
       return next();
     } else {
       return unauthorized(res);
-    };
+    }
   };
 
   // set authentication middleware
   app.use(auth);
-  
+
   // set middleware
   app.use(bodyParser.json());
 
+  // assign the mustache engine to .html files
+  app.engine('html', cons.mustache);
+
+  // set .html as the default extension
+  app.set('view engine', 'html');
+  app.set('views', __dirname + '/../www/views');
+  
   // API and Web Server + Socket part
   _cb({http: app, io: io});
 

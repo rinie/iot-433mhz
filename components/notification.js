@@ -1,5 +1,6 @@
 var request = require('request');
 var config = require('../config.json');
+var debug = require('./debug.js')();
 
 function _getRemoteUrl(url_name){
 	return new Promise(function(resolve, reject){
@@ -24,7 +25,7 @@ function _postRequestJSON(url, json_data, uid, callback){
 	    uri: url+'/'+uid, // always attach the uid as entrypoint.
 	    strictSSL: false, // because we're using a self-signed certificate
 	    headers: {'cache-control': 'no-cache', 'Content-Type': 'application/json'},
-	    body: JSON.stringify(json_data) 
+	    body: JSON.stringify(json_data)
 	  },
 	  callback
 	  );
@@ -32,6 +33,7 @@ function _postRequestJSON(url, json_data, uid, callback){
 }
 
 module.exports = function(dbFunctions, webHooks){
+	var t = +new Date();
 
 	var methods = {
 		adviceTelegram: function(card){
@@ -45,11 +47,14 @@ module.exports = function(dbFunctions, webHooks){
 								_postRequestJSON(url, card, uid, function (error, response, body) {
 								    if (error || response.statusCode !== 200) return reject('HTTP failed: '+ error);
 									resolve(body);
-								    console.log('Telegram Notification sent! - Server responded with:', body);
+								    debug('Telegram Notification sent! - Server responded with:', body);
 							  	});
 						  	});
 						}).catch(function(err){ reject(err); });
-					else console.log('Telegram Notification disabled. Menu > Settings.');
+					else{
+						debug('Telegram Notification disabled. Menu > Settings.');
+						resolve();
+					}
 				}).catch(function(err){ reject(err); });
 			});
 		},
@@ -68,12 +73,17 @@ module.exports = function(dbFunctions, webHooks){
 		},
 		alarmAdviseAll: function(card){
 			// advice telegram, email, webhooks
-			methods.adviceEmail(card)
-			.then(methods.adviceTelegram)
-			.then(methods.adviceWebHook)
-			.catch(function(err){
-				console.error(err);
-			});
+			var now = +new Date();
+			var elapsed = now - t;
+			if (elapsed > config.notificationDelay * 1000){
+				methods.adviceEmail(card)
+				.then(methods.adviceTelegram)
+				.then(methods.adviceWebHook)
+				.catch(function(err){
+					console.error(err);
+				});
+				t = now;
+			} else debug('Notification delayed'); // 1 notification every 5 sec
 		},
 		webHookCodeDetected: function(codeData){
 			// webHook call (code detected)

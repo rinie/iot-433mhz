@@ -1,7 +1,8 @@
-var config = require('../config.json');
 var prompt = require('prompt');
 var fs = require('fs');
 var chalk = require('chalk');
+var config = require('../config.json');
+var debug = require('./debug.js')();
 // Import events module and create an eventEmitter object
 var events = require('events');
 var eventEmitter = new events.EventEmitter();
@@ -10,7 +11,6 @@ var rf433mhz = function(board){
 
 	var type;
 	// serialport module
-	var port;
 	var serial; // require('serialport');
 	// rpi-433 module
 	var rpi433; // require('rpi-433');
@@ -22,19 +22,17 @@ var rf433mhz = function(board){
 
 		type = (board.platform == 'rpi' && !config.platforms.rpi['use-external-arduino']) ? 'rpi' : 'arduino';
 		if (type === 'arduino'){
-			port = board.port;
-			var serialport = require('serialport');
-			var SerialPort = serialport.SerialPort; // localize object constructor
-
+			var SerialPort = (process.env.NODE_ENV === 'development') ? require('virtual-serialport'): require('serialport');
 			serial = new SerialPort(board.port, {
-  				parser: serialport.parsers.readline('\n'),
-  				baudRate: config.arduino_baudrate
-			}, false); // openImmediately flag set to false
+  				parser: SerialPort.parsers.readline('\n'),
+  				baudRate: config.arduino_baudrate,
+					autoOpen: false // autoOpen flag set to false, manually need to open the port
+			});
 
 		}else{
 			// rpi
 			rpi433 = require('rpi-433');
-    		
+
 		}
 
 	}
@@ -44,16 +42,16 @@ var rf433mhz = function(board){
 	  if (type === 'arduino') // arduino
 		serial.open(function (error) {
 		  if ( error ) {
-		    console.log('failed to open: '+error);
+		    debug('failed to open: '+error);
 		    throw error;
 		  } else {
-		    if (config.DEBUG) console.log('Serial port opened');
-			    onOpen();
+		     debug('Serial port opened');
+	             onOpen();
 		  }
 		});
 	  else{ // rpi
 	  	// initialize rpi-433 module
-	  	rfSniffer = rpi433.sniffer(config.platforms.rpi['sniff-pin'], config.platforms.rpi['debounce-delay']); //Snif on PIN 2 with a 500ms debounce delay 
+	  	rfSniffer = rpi433.sniffer(config.platforms.rpi['sniff-pin'], config.platforms.rpi['debounce-delay']); //Snif on PIN 2 with a 500ms debounce delay
     	rfSend    = rpi433.sendCode;
 	  }
 	};
@@ -69,15 +67,15 @@ var rf433mhz = function(board){
 					try{
 						callback(JSON.parse(data)); // returning JSON parsed
 					}catch(e){
-						console.log('Error parsing this JSON: ', data);
+						debug('Error parsing this JSON: ', data);
 					}
 				});
 			}
-		
+
 	};
 
 	this.send = function(code, callback){
-		
+
 		if (type === 'rpi'){ // rpi
 			// WATCH OUT code CASTING, it has to be a number type. Just check on RPi.
 			rfSend(code, config.platforms.rpi['transmitter-pin'], callback);
@@ -85,7 +83,7 @@ var rf433mhz = function(board){
 			if (serial.isOpen()){
 				serial.write(String(code), callback);
 			}else{
-				console.log('SerialPort not open!');
+				debug('SerialPort not open!');
 			}
 		}
 	};
@@ -111,7 +109,8 @@ module.exports = function(argv, module_callback){
 	function choose_port(whatToUse){
 		var serialPort = require('serialport');
 		serialPort.list(function (err, ports) {
-			if (ports.length === 0) { console.log('No ports available'); return;}
+			if (process.env.NODE_ENV === 'development') ports.push({comName: '/dev/ttyVIRTUAL'});
+			if (ports.length === 0) { debug('No ports available'); return;}
 
 			console.log('Selectable serial ports:');
 			var k = 1;
@@ -121,9 +120,10 @@ module.exports = function(argv, module_callback){
 			});
 
 
-			if (argv.serialport){
+			if (argv.serialport || process.env.SERIAL_PORT){
 				// return choosen port
-				var classe = new rf433mhz({platform: whatToUse, port: argv.serialport.trim()});
+				var port = argv.serialport ? argv.serialport.trim(): process.env.SERIAL_PORT.trim();
+				var classe = new rf433mhz({platform: whatToUse, port: port});
 		   		module_callback(classe);
 			}else{
 				prompt.start();
@@ -138,7 +138,7 @@ module.exports = function(argv, module_callback){
 		    		var classe = new rf433mhz({platform: whatToUse, port: ports[result.port-1].comName});
 
 		   			 module_callback(classe);
-		    
+
 				});
 
 			}
@@ -178,7 +178,7 @@ module.exports = function(argv, module_callback){
 					// Running on RPi
 					// Only on RPi will successfully works.
 					eventEmitter.emit('choose_port', 'rpi');
-					
+
 				}else{
 
 				// we're on a standard linux

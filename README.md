@@ -1,4 +1,6 @@
 ![IoT 433Mhz Logo](https://github.com/roccomuso/iot-433mhz/blob/master/other/pics/logo128x128.png?raw=true "Iot 433Mhz Logo")
+[![Build Status](https://travis-ci.org/roccomuso/iot-433mhz.svg?branch=master)](https://travis-ci.org/roccomuso/iot-433mhz) [![bitHound Overall Score](https://www.bithound.io/github/roccomuso/iot-433mhz/badges/score.svg)](https://www.bithound.io/github/roccomuso/iot-433mhz) [![NPM Version](https://img.shields.io/npm/v/iot-433mhz.svg)](https://www.npmjs.com/package/iot-433mhz) [![Dependency Status](https://david-dm.org/roccomuso/iot-433mhz.png)](https://david-dm.org/roccomuso/iot-433mhz)
+<span class="badge-patreon"><a href="https://patreon.com/roccomuso" title="Donate to this project using Patreon"><img src="https://img.shields.io/badge/patreon-donate-yellow.svg" alt="Patreon donate button" /></a></span>
 
       ___    _____     _  _  __________ __  __ _
      |_ _|__|_   _|   | || ||___ /___ /|  \/  | |__  ____
@@ -9,8 +11,10 @@
 
 # Summary
 
-IoT System to control 433 MHz RC power sockets, PIR sensors, Door Sensors and much more. 
-To start is required a 433mhz transmitter and receiver, a connected Arduino with the iot-433mhz sketch or directly with capable hardware like the Raspberry Pi.
+Iot-433mhz is a home automation framework for 433mhz devices that runs on node.js. You can control 433MHz RC power sockets, PIR sensors, Door Sensors and much more.
+To get started you just need a:
+- 433mhz transmitter and receiver, both connected to an Arduino with the iot-433mhz sketch on it.
+- A PC/RaspberryPi that runs the iot-433mhz platform, connected to Arduino through USB.
 
 # UI Demo
 
@@ -51,13 +55,23 @@ or Clone this Repo:
 
 Then don't forget to install all the dependencies with <code>npm install</code> (on UNIX system root privileges are required).
 
+Tested and fully-working with **Node 4.4**.
+
 **Heads Up**: On Raspberry Pi, you can encounter some issue installing all the dependencies, due to permission errors. If that happens try this: <code>sudo chown -R $USER:$GROUP ~/.npm</code> combined with running <code>npm cache clean</code> to get any busted packages out of your cache. In addition, if the error still persist, try adding the flag <code>--unsafe-perm</code>:
 
     sudo npm install --unsafe-perm   (if installing from git)
     or
     sudo npm install iot-433mhz -g --unsafe-perm   (if installing from npm)
 
+Note: the reason for using the `--unsafe-perm` option is that when node-gyp tries to recompile any native libraries (eg. serialport) it tries to do so as a "nobody" user and then fails to get access to certain directories. Allowing it root access during install allows the dependencies to be installed correctly during the upgrade.
+
 If running on different platforms follow the platform-specific setup below:
+
+## Browser Support
+
+![IE](https://cloud.githubusercontent.com/assets/398893/3528325/20373e76-078e-11e4-8e3a-1cb86cf506f0.png "Internet Explorer") | ![Chrome](https://cloud.githubusercontent.com/assets/398893/3528328/23bc7bc4-078e-11e4-8752-ba2809bf5cce.png "Google Chrome") | ![Firefox](https://cloud.githubusercontent.com/assets/398893/3528329/26283ab0-078e-11e4-84d4-db2cf1009953.png "Firefox") | ![Opera](https://cloud.githubusercontent.com/assets/398893/3528330/27ec9fa8-078e-11e4-95cb-709fd11dac16.png "Opera") | ![Safari](https://cloud.githubusercontent.com/assets/398893/3528331/29df8618-078e-11e4-8e3e-ed8ac738693f.png "Safari")
+--- | --- | --- | --- | --- |
+IE 11+ ✔ | Latest ✔ | Latest ✔ | Latest ✔ | Latest ✔ |
 
 # Specific Setup
 
@@ -91,9 +105,9 @@ and then execute with:
 
 ## B. Raspberry Pi (Raspbian Jessie) with 433 MHz transmitter and receiver
 
-To use iot-433mhz on Raspberry Pi first do a **system update**: 
+To use iot-433mhz on Raspberry Pi first do a **system update**:
 - Update <code>/etc/apt/sources.list</code> to have <code>jessie</code> wherever you've currently got <code>wheezy</code>.
-- <code>sudo apt-get update && sudo apt-get dist-upgrade</code>. 
+- <code>sudo apt-get update && sudo apt-get dist-upgrade</code>.
 - <code>sudo rpi-update</code>.
 - Reboot.
 
@@ -147,6 +161,8 @@ Through the Settings page from the Web Interface, you can more or less change th
     db_compact_interval: 12, // Database needs to be compacted to have better performance, by default every 12 hours it will be compacted, put 0 to avoid DB compacting.
     "backend_urls": "..." // You can specify a backend json file containing the urls to carry out notifications. (NB. this requires the iot-433mhz-backend repo)
 
+iot-433mhz makes use of the node DEBUG module. It's enabled by default, but you can enable or disable it using the environment variable <code>DEBUG=iot-433mhz:*</code>. You could also debug a specific part of the application providing as secondary param the file name, like <code>DEBUG=iot-433mhz:socketFunctions.js</code>.
+
 If you made a change to the settings from the Web interface, then to make it effective, you need to restart the app.
 The best way to set custom settings is through the CLI optional parameters, shown below.
 
@@ -170,6 +186,13 @@ To custom your system settings simply use the CLI options:
 That shows something like that:
 
 ![iot-433mhz cli options](https://github.com/roccomuso/iot-433mhz/blob/master/other/pics/iot-433mhz-cli-options.PNG?raw=true "iot-433mhz cli options")
+
+You can provide some parameter also as ENV variables:
+
+    NODE_ENV=development  # for virtual serial port
+    PORT=8080  # web server port
+    SERIAL_PORT=/dev/ttyUSB0  # serial port
+
 
 ## Built-in Web Interface
 
@@ -239,12 +262,12 @@ Return a single card with the specified shortname.
 
 - <code>POST /api/cards/new</code>
 form-data required parameters:
-    
+
         headline - a brief headline.
         shortname - lower case, no spaces.
         card_body - a description, html allowed.
         room - lower case, no spaces.
-        type - must be one of the following types: switch/alarm/info 
+        type - must be one of the following types: switch/alarm/info
         device - if type==switch gotta have on_code and off_code parameters. if type==alarm just the trigger_code parameter
 
 Optional parameter: <code>card_img</code>, <code>background_color</code> (must be an hex color with).
@@ -252,6 +275,12 @@ Json response: 200 OK - <code>{"done": true, "newCard": ...}</code> where newCar
 
 - <code>GET /api/cards/delete/[shortname]</code>
 Delete the card with the specified shortname, it returns <code>{"status": "ok", cards_deleted: 1}</code> or <code>{"status": "error", "error": "error description.."}</code>
+
+- <code>POST /api/cards/arm-all</code>
+Arm all the alarm type cards. It returns <code>{"status": "ok", cards_affected: n, armed: true}</code> or <code>{"status": "error", "error": "error description.."}</code>
+
+- <code>POST /api/cards/disarm-all</code>
+Disarm all the alarm type cards. It returns <code>{"status": "ok", cards_affected: n, armed: false}</code> or <code>{"status": "error", "error": "error description.."}</code>
 
 - <code>GET /api/alarm/[shortname]/arm</code>
 Only alarm type cards can be armed.
@@ -324,7 +353,9 @@ Out of the box, the iot-433mhz provides notifications through email and through 
 
 ![Telegram settings](https://github.com/roccomuso/iot-433mhz/blob/master/other/pics/iot-433mhz-telegram-settings.PNG?raw=true "Telegram Settings")
 
-The Email notification system is under construction (TODO).
+By default there is a 5 second notification delay (editable from <code>config.json:notificationDelay</code>). So you won't be flooded by alarms signals.
+
+The Email notification system is under construction [#18](https://github.com/roccomuso/iot-433mhz/issues/18).
 
 # Android & iOS Apps
 

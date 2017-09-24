@@ -12,69 +12,77 @@ var path = require('path');
 var config = require('./config.json');
 var argv = require('./components/arguments-handler.js');
 
-if (typeof argv.debug !== 'undefined') config.DEBUG = argv.debug; // if defined use CLI debug (NB. current choice is not stored inside the config.json file, so other scripts that are including the file from the disk and are not using this variable istance may not retrieve the right DEBUG choice from the User)
+if (typeof argv.debug !== 'undefined') config.debug = argv.debug; // if defined use CLI debug (NB. current choice is not stored inside the config.json file, so other scripts that are including the file from the disk and are not using this variable istance may not retrieve the right DEBUG choice from the User)
+var debug = require('./components/debug.js')();
 
 // Create or open the underlying DB store
 var Datastore = require('./EventedDatastore.js'); // nedb doesn't provide listener on DB events by default
 var db = {};
-db.RFCODES = new Datastore({
-    filename: path.resolve(__dirname, './DB/rfcodes.db'),
-    autoload: true
-});
-db.CARDS = new Datastore({
-    filename: path.resolve(__dirname, './DB/cards.db'),
-    autoload: true
-});
-db.SETTINGS = new Datastore({
-    filename: path.resolve(__dirname, './DB/settings.db'),
-    autoload: true
-})
 
-// Compact DB at regular intervals (see nedb: #Persistence)
-if (config.db_compact_interval > 0){
-    db.RFCODES.persistence.setAutocompactionInterval(config.db_compact_interval * 60000 * 60);
-    db.CARDS.persistence.setAutocompactionInterval(config.db_compact_interval * 60000 * 60);
-    db.SETTINGS.persistence.setAutocompactionInterval(config.db_compact_interval * 60000 * 60);
-}
-
-// Initialize WebHooks module.
-var WebHooks = require('node-webhooks');
-var webHooks = new WebHooks({
-    db: path.resolve(__dirname, './webHooksDB.json'), // json file that store webhook URLs
-    DEBUG: config.DEBUG
-});
-
-
-var dbFunctions = require('./components/dbFunctions.js')(db, config);
-var notification = require('./components/notification.js')(dbFunctions, webHooks);
+var dbFunctions, notification, webHooks;
 
 // Radio Frequency Class platform-independent
 var rf433mhz;
 
 // Starting Flow
 async.series({
+        init_db: function(callback){
+            debug('calling init_db');
+            // load/create DB
+            db.RFCODES = new Datastore({
+                filename: path.resolve(__dirname, './DB/rfcodes.db'),
+                autoload: true
+            });
+            db.CARDS = new Datastore({
+                filename: path.resolve(__dirname, './DB/cards.db'),
+                autoload: true
+            });
+            db.SETTINGS = new Datastore({
+                filename: path.resolve(__dirname, './DB/settings.db'),
+                autoload: true
+            });
+
+            // Compact DB at regular intervals (see nedb: #Persistence)
+            if (config.db_compact_interval > 0){
+                db.RFCODES.persistence.setAutocompactionInterval(config.db_compact_interval * 60000 * 60);
+                db.CARDS.persistence.setAutocompactionInterval(config.db_compact_interval * 60000 * 60);
+                db.SETTINGS.persistence.setAutocompactionInterval(config.db_compact_interval * 60000 * 60);
+            }
+
+            dbFunctions = require('./components/dbFunctions.js')(db, config);
+            callback(null, 1);
+        },
         ascii_logo: function(callback) {
+            debug('printing ascii_logo');
             require('./components/ascii_logo.js')(function(logo) {
                 console.log(chalk.magenta(logo)); // print blue ascii logo
                 callback(null, 1);
             });
         },
+        init_webhooks: function(callback){
+            debug('calling init_webhooks');
+            // Initialize WebHooks module.
+            var WebHooks = require('node-webhooks');
+            webHooks = new WebHooks({
+                db: path.resolve(__dirname, './DB/webHooksDB.json') // json file that store webhook URLs
+            });
+            notification = require('./components/notification.js')(dbFunctions, webHooks);
+            callback(null, 1);
+        },
         platform: function(callback) {
-
-            console.log(chalk.bgYellow('Debug Mode:', config.DEBUG));
-
+            debug('platform configuration');
             require('./components/platform.js')(argv, function(rf) {
                 rf433mhz = rf; // platform independent class
                 callback(null, rf433mhz);
             });
 
         },
-        init_db: function(callback) {
+        load_db: function(callback) {
             // Put default demo cards if CARDS DB is empty
             dbFunctions.initDBCards(require('./components/demo_cards.json')).then(dbFunctions.initDBSettings).then(function(settings) {
                 callback(null, 1);
             }).catch(function(err) {
-                console.log('init_db error:', err);
+                console.log('load_db error:', err);
                 console.log(err.stack);
             });
         },
@@ -95,7 +103,7 @@ async.series({
                 var io = server.io;
 
                 require('./components/api.js')(http, io, rf433mhz, dbFunctions, webHooks);
-                
+
                 // Web Socket handler
                 require('console-mirroring')(io); // Console mirroring
 
@@ -146,28 +154,28 @@ async.series({
 
                 rf433mhz.on(function(codeData) {
 
-                    if (config.DEBUG) console.log('RFcode received: ', codeData);
+                    debug('RFcode received: ', codeData);
 
                     if (codeData.status === 'received') {
                         // put in DB if doesn't exists yet
                         dbFunctions.putCodeInDB(codeData).then(function(mex) {
-                            if (config.DEBUG) console.log(mex);
+                            debug(mex);
 
                             dbFunctions.isCodeAvailable(codeData.code).then(function(result) { // a code is available if not ignored and not assigned.
-                                if (config.DEBUG) console.log('code available: '+result.isAvailable+' assigned to: '+result.assignedTo);
+                                debug('code available: '+result.isAvailable+' assigned to: '+result.assignedTo);
 
                                 if (result.isAvailable)
                                     io.emit('newRFCode', codeData); // sent to every open socket.
                                 else{
                                     // code not available, check if the code is assigned to an alarm card
-                                    
+
                                     var card_shortname = result.assignedTo;
                                     dbFunctions.alarmTriggered(card_shortname, 'alarm').then(function(card){
                                             if (card){
                                                io.emit('uiTriggerAlarm', card);
                                                // if Alarm is armed send email or other kind of notification (Telegram mex).
                                                if (card.device.armed){
-                                                    notification.alarmAdviseAll(card);  
+                                                    notification.alarmAdviseAll(card);
                                                 }
 
                                             }
@@ -198,7 +206,7 @@ async.series({
     function(err, results) {
         // results is now equal to: {one: 1, two: 2}
 
-        // console.log('Results: ', results);
+        // debug('Results: ', results);
 
     });
 
