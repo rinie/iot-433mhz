@@ -16,8 +16,9 @@ module.exports = function(argv, _cb){
 
   // Starting Server
   server.listen(config.server_port);
-  console.info('Server started on', getLocalIPAddress(), '- Port', config.server_port);
-
+  //console.info('Server started on', getLocalIPAddress(), '- Port', config.server_port);
+  // Rinie pastable URL
+  console.info('Server started on http://' + getLocalIPAddress()+':'+config.server_port);
   // Auth function
   var auth = function (req, res, next) {
     function unauthorized(res) {
@@ -50,7 +51,7 @@ module.exports = function(argv, _cb){
   // set .html as the default extension
   app.set('view engine', 'html');
   app.set('views', __dirname + '/../www/views');
-  
+
   // API and Web Server + Socket part
   _cb({http: app, io: io});
 
